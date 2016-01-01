@@ -63,6 +63,9 @@ module Data.Matrix (
     -- ** Determinants
   , detLaplace
   , detLU
+  , inverse
+  , cofactorMatrix 
+  , adjugateMatrix
   ) where
 
 -- Classes
@@ -132,6 +135,10 @@ instance Show a => Show (Matrix a) where
 
 instance NFData a => NFData (Matrix a) where
  rnf = rnf . mvect
+
+instance Applicative Matrix where
+   pure a = fromLists [[a]]
+   a <*> b = apply' a b
 
 -- | /O(rows*cols)/. Similar to 'V.force'. It copies the matrix content
 --   dropping any extra memory.
@@ -1234,3 +1241,32 @@ detLU m = case luDecomp m of
   Just (u,_,_,d) -> d * diagProd u
   Nothing -> 0
 
+-- | Minor of a value at (x, y) in matrix m.
+minor :: (Ord a, Fractional a) => Matrix a -> Int -> Int -> a
+minor m x y = detLU $ minorMatrix x y m
+
+-- | Cofactor of a value at (x, y) in matrix m.
+cofactor :: (Ord a, Fractional a) => Matrix a -> (Int, Int) -> a
+cofactor m (x, y) = (-1)^(x+y) * minor m x y
+
+-- | Cofactor matrix of a matrix m.
+cofactorMatrix :: (Ord a, Fractional a) => Matrix a -> Matrix a
+cofactorMatrix m = matrix (nrows m) (ncols m) (cofactor m)
+
+-- | Adjugate matrix of a matrix.
+adjugateMatrix :: (Ord a, Fractional a) => Matrix a -> Matrix a
+adjugateMatrix = transpose . cofactorMatrix
+
+-- | Inverse of a matrix if it is invertible. Otherwise Nothing.
+inverse :: (Fractional a, Eq a, Ord a) => Matrix a -> Maybe (Matrix a)
+inverse m = 
+   if nrows m == ncols m && detLU m /= 0
+      then Just $ (*) (1.0 / detLU m) <$> adjugateMatrix m
+      else Nothing
+
+-- | Apply method to the applicative instance
+apply' :: Matrix (a -> b) -> Matrix a -> Matrix b
+apply' (M a b c d e f) (M a' b' c' d' e' v) = 
+   M a b c d e $ V.fromList $ zipWith (\f x -> f x) f2 v2
+   where f2 = V.toList f
+         v2 = V.toList v
